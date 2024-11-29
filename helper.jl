@@ -29,38 +29,38 @@ function createfile(year,day)
     end
 end
 
-parselines(input) = split(strip(input),"\r\n")
-loadlines(;part=1,problem="p") = loadlines(getyearday()...,part,problem)
-loadlines(year,day,part=1,problem="p") = loadlines(getfilename(year,day,part,problem))
-function loadlines(filename::String)
-    lines = readlines(filename)
-    while lines[end] == ""
-        lines = lines[1:end-1]
+    parselines(input) = split(strip(input),"\r\n")
+    loadlines(;part=1,problem="p") = loadlines(getyearday()...,part,problem)
+    loadlines(year,day,part=1,problem="p") = loadlines(getfilename(year,day,part,problem))
+    function loadlines(filename::String)
+        lines = readlines(filename)
+        while lines[end] == ""
+            lines = lines[1:end-1]
+        end
+        lines
     end
-    lines
-end
 
-loadgrid(filename::String;type=Char,delim="") = parsegrid(loadlines(filename);type=type,delim=delim)
-loadgrid(;part=1,problem="p",type=Char,delim="") = parsegrid(loadlines(;part=part,problem=problem);type=type,delim=delim)
-function  parsegrid(linesin;type = Char,permute = true,delim="")
-    maxline = maximum(length.(linesin))
-    lines = rpad.(linesin,maxline," ")
-    grid = hcat(split.(lines,delim)...)
-    if type != Char
-        grid = parse.(type,grid)
-    else
-        grid = getindex.(grid,1)
+    loadgrid(filename::String;type=Char,delim="") = parsegrid(loadlines(filename);type=type,delim=delim)
+    loadgrid(;part=1,problem="p",type=Char,delim="") = parsegrid(loadlines(;part=part,problem=problem);type=type,delim=delim)
+    function  parsegrid(linesin;type = Char,permute = true,delim="")
+        maxline = maximum(length.(linesin))
+        lines = rpad.(linesin,maxline," ")
+        grid = hcat(split.(lines,delim)...)
+        if type != Char
+            grid = parse.(type,grid)
+        else
+            grid = getindex.(grid,1)
+        end
+        permute && return permutedims(grid,(2,1))
+        grid
     end
-    permute && return permutedims(grid,(2,1))
-    grid
-end
 
-loadhashgrid(filename::String) =loadhashgrid(loadlines(filename))
-loadhashgrid(;part=1,problem="p",kwargs...) = parsehashgrid(loadlines(;part=part,problem=problem);kwargs...)
-function parsehashgrid(lines;truechar="#")
-    @assert length(unique(length.(lines))) == 1
-    (x -> x ==truechar).(hcat(split.(lines,"")...))'
-end
+    loadhashgrid(filename::String) =loadhashgrid(loadlines(filename))
+    loadhashgrid(;part=1,problem="p",kwargs...) = parsehashgrid(loadlines(;part=part,problem=problem);kwargs...)
+    function parsehashgrid(lines;truechar="#")
+        @assert length(unique(length.(lines))) == 1
+        (x -> x ==truechar).(hcat(split.(lines,"")...))'
+    end
 
 function splitvect(a::Vector,delim)
     inds = vcat(0,findall(==(delim),a),length(a)+1)
@@ -105,6 +105,28 @@ import Base.rotr90, Base.rot180
 Base.rotr90(ci::CartesianIndex{2}) = CartesianIndex(ci[2],-ci[1])
 Base.rotl90(ci::CartesianIndex{2}) = CartesianIndex(-ci[2],ci[1])
 Base.rot180(ci::CartesianIndex{2}) = CartesianIndex(-ci[1],-ci[2])
+
+circr45(ci::CartesianIndex{2}) = 
+    if ci[1] == 0
+        CartesianIndex(ci[2],ci[2])
+    elseif ci[2] == 0
+        CartesianIndex(ci[1],-ci[1])
+    elseif ci[1] == ci[2]
+        CartesianIndex(0,ci[2])
+    else
+        CartesianIndex(ci[1],0)
+    end
+
+circl45(ci::CartesianIndex{2}) =
+    if ci[1] == 0
+        CartesianIndex(-ci[2],ci[2])
+    elseif ci[2] == 0
+        CartesianIndex(ci[1],ci[1])
+    elseif ci[1] == ci[2]
+        CartesianIndex(ci[1],0)
+    else
+        CartesianIndex(0,ci[2])
+    end
 
 
 # UNIT RANGE SIMPLIFICATION
