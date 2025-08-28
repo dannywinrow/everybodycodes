@@ -2,6 +2,7 @@ using HTTP
 using Dates
 using JSON3
 using CircularArrays
+using AES
 
 #PATHS
 getfilename(year,day,part=1,type="p") = "$year/inputs/$day$type$(part).txt"
@@ -12,6 +13,32 @@ getsubmiturl(year,day) = puzzleurl(year,day) * "/answer"
 const templatefile = "puzzletemplate.jl"
 const logfile = "log.txt"
 const logdelim = " | "
+include("private.jl")
+const cookies = Dict("everybody-codes"=>sessioncookie)
+
+function downloadinput(event,quest)
+    url = "https://everybody-codes.b-cdn.net/assets/$event/$quest/input/$seed.json"
+    r = HTTP.get(url;cookies=cookies)
+    JSON3.read(String(r.body))
+end
+
+function downloadinput(event,quest,part)
+    inputs = downloadinput(event,quest)
+    keys = getkeys(event,quest)
+    if !haskey(keys,"key$part")
+        @warn "There is no key available for part $part yet"
+    else
+        key = AES128Key(codeunits(keys["key$part"]))
+        @info inputs[part]
+        decrypt(hex2bytes(inputs[part]),AESCipher(;key_length=128, mode=AES.CBC, key=key))
+    end
+end
+
+function getkeys(event,quest)
+    url = "https://everybody.codes/api/event/$event/quest/$quest"
+    r = HTTP.get(url;cookies=cookies)
+    JSON3.read(String(r.body))
+end
 
 # FILE HANDLING
 createfile() = createfile(year(now()),day(now()))
