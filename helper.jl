@@ -2,7 +2,7 @@ using HTTP
 using Dates
 using JSON3
 using CircularArrays
-using AES
+using Nettle
 
 #PATHS
 getfilename(year,day,part=1,type="p") = "$year/inputs/$day$type$(part).txt"
@@ -22,15 +22,55 @@ function downloadinput(event,quest)
     JSON3.read(String(r.body))
 end
 
+#=
+This is suitable for use with https://github.com/faf0/AES.jl but it is
+not the registered AES package.
+The registered AES.jl package does not support 256bit AES.
+I have used Nettle.jl instead as it is registered.
+
 function downloadinput(event,quest,part)
     inputs = downloadinput(event,quest)
     keys = getkeys(event,quest)
     if !haskey(keys,"key$part")
         @warn "There is no key available for part $part yet"
     else
-        key = AES128Key(codeunits(keys["key$part"]))
-        @info inputs[part]
-        decrypt(hex2bytes(inputs[part]),AESCipher(;key_length=128, mode=AES.CBC, key=key))
+        key = collect(codeunits(keys["key$part"]))
+        iv = collect(codeunits(keys["key$part"][1:16]))
+        String(AES.AESCBC(hex2bytes(inputs[part]),key,iv,false))
+    end
+end=#
+
+function downloadinput(event,quest,part)
+    inputs = downloadinput(event,quest)
+    keys = getkeys(event,quest)
+    if !haskey(keys,"key$part")
+        @warn "There is no key available for part $part yet"
+    else
+
+        key = collect(codeunits(keys["key$part"]))
+        iv = collect(codeunits(keys["key$part"][1:16]))
+        data = hex2bytes(inputs[part])
+        keylength = length(key)*8
+        dec = Decryptor("AES256", key)
+        deciphertext = decrypt(dec, :CBC, iv, data)
+        String(trim_padding_PKCS5(deciphertext))
+    end
+end
+
+function saveinput(event,quest,part)
+    path = getfilename(event,quest,part)
+    if !isfile(path)
+        input = downloadinput(event,quest,part)
+        if !isnothing(input)
+            write(path,input)
+        end
+    end
+end
+
+saveinputs() = saveinputs(getyearday()...)
+function saveinputs(event,quest)
+    for part in 1:3
+        saveinput(event,quest,part)
     end
 end
 
@@ -48,46 +88,46 @@ function createfile(year,day)
         mkpath(dirname(filepath))
         cp(templatefile,filepath)
     end
-    for pt in 1:3
+    #=for pt in 1:3
         filepath = getfilename(year,day,pt)
         if !isfile(filepath)
             write(filepath,"")
         end
-    end
+    end=#
 end
 
-    parselines(input) = split(strip(input),"\r\n")
-    loadlines(;part=1,problem="p") = loadlines(getyearday()...,part,problem)
-    loadlines(year,day,part=1,problem="p") = loadlines(getfilename(year,day,part,problem))
-    function loadlines(filename::String)
-        lines = readlines(filename)
-        while lines[end] == ""
-            lines = lines[1:end-1]
-        end
-        lines
+parselines(input) = split(strip(input),"\r\n")
+loadlines(;part=1,problem="p") = loadlines(getyearday()...,part,problem)
+loadlines(year,day,part=1,problem="p") = loadlines(getfilename(year,day,part,problem))
+function loadlines(filename::String)
+    lines = readlines(filename)
+    while lines[end] == ""
+        lines = lines[1:end-1]
     end
+    lines
+end
 
-    loadgrid(filename::String;type=Char,delim="") = parsegrid(loadlines(filename);type=type,delim=delim)
-    loadgrid(;part=1,problem="p",type=Char,delim="") = parsegrid(loadlines(;part=part,problem=problem);type=type,delim=delim)
-    function  parsegrid(linesin;type = Char,permute = true,delim="")
-        maxline = maximum(length.(linesin))
-        lines = rpad.(linesin,maxline," ")
-        grid = hcat(split.(lines,delim)...)
-        if type != Char
-            grid = parse.(type,grid)
-        else
-            grid = getindex.(grid,1)
-        end
-        permute && return permutedims(grid,(2,1))
-        grid
+loadgrid(filename::String;type=Char,delim="") = parsegrid(loadlines(filename);type=type,delim=delim)
+loadgrid(;part=1,problem="p",type=Char,delim="") = parsegrid(loadlines(;part=part,problem=problem);type=type,delim=delim)
+function  parsegrid(linesin;type = Char,permute = true,delim="")
+    maxline = maximum(length.(linesin))
+    lines = rpad.(linesin,maxline," ")
+    grid = hcat(split.(lines,delim)...)
+    if type != Char
+        grid = parse.(type,grid)
+    else
+        grid = getindex.(grid,1)
     end
+    permute && return permutedims(grid,(2,1))
+    grid
+end
 
-    loadhashgrid(filename::String) =loadhashgrid(loadlines(filename))
-    loadhashgrid(;part=1,problem="p",kwargs...) = parsehashgrid(loadlines(;part=part,problem=problem);kwargs...)
-    function parsehashgrid(lines;truechar="#")
-        @assert length(unique(length.(lines))) == 1
-        (x -> x ==truechar).(hcat(split.(lines,"")...))'
-    end
+loadhashgrid(filename::String) =loadhashgrid(loadlines(filename))
+loadhashgrid(;part=1,problem="p",kwargs...) = parsehashgrid(loadlines(;part=part,problem=problem);kwargs...)
+function parsehashgrid(lines;truechar="#")
+    @assert length(unique(length.(lines))) == 1
+    (x -> x ==truechar).(hcat(split.(lines,"")...))'
+end
 
 function splitvect(a::Vector,delim)
     inds = vcat(0,findall(==(delim),a),length(a)+1)
