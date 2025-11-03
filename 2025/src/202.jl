@@ -26,6 +26,23 @@ function solveit(balloons,fluffbolts)
 end
 
 
+
+function solveitcircslow(balloons,times,fluffbolts)
+    br = repeat(balloons,times)
+    brc = [x for x in br]
+    @info length(brc)
+    i = 0
+    while length(brc) > 0
+        i += 1
+        if iseven(length(brc)) && brc[1] == fluffbolts[i]
+            brc = vcat(brc[2:length(brc)÷2],brc[length(brc)÷2+2:end])
+        else
+            brc = brc[2:end]
+        end
+    end
+    i
+end
+
 function solveitcirc(balloons,times,fluffbolts)
     br = repeat(balloons,times)
     brc = [x for x in br]
@@ -149,3 +166,5 @@ using BenchmarkTools
 @benchmark solveitcircll(balloons,100000,fluffbolts)
 @benchmark solveitcircca(balloons,100000,fluffbolts)
 @benchmark solveitcircca2(balloons,100000,fluffbolts)
+@benchmark solveitcircslow(balloons,100000,fluffbolts)
+
