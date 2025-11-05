@@ -44,12 +44,12 @@ end
 
 function solve2()
     A = getA(2)
-    engravepoint.(A + CN(x,y) for x in 0:10:1000 for y in 0:10:1000)
+    engravepoint.(A + CN(x,y) for x in 0:10:1000, y in 0:10:1000)
 end
 
 function solve3()
     A = getA(3)
-    engravepoint.(A + CN(x,y) for x in 0:1000 for y in 0:1000)
+    engravepoint.(A + CN(x,y) for x in 0:1000, y in 0:1000)
 end
 
 pt1 = solve1()
@@ -59,5 +59,5 @@ pt3 = solve3()
 sum(pt3)
 
 using Colors
-Gray.(reshape(pt2,(101,101)))
-Gray.(reshape(pt3,(1001,1001)))
+Gray.(pt2)
+Gray.(pt3)
