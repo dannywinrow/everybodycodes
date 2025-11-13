@@ -75,5 +75,3 @@ end
 pt1 = solve1()
 pt2 = solve2()
 pt3 = solve3()
-
-
