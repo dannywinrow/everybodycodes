@@ -8,8 +8,7 @@ using Nettle
 getfilename(year,day,part=1,type="p") = "$year/inputs/$day$type$(part).txt"
 getjuliafilename(year,day) = "$year/src/$(day).jl"
 puzzleurl(year,day) = "https://everybody.codes/event/$year/quests/$day"
-getinputurl(year,day) = puzzleurl(year,day) * "/input"
-getsubmiturl(year,day) = puzzleurl(year,day) * "/answer"
+getsubmiturl(year,day,part) = puzzleurl(year,day) * "/part/$part/answer"
 const templatefile = "puzzletemplate.jl"
 const logfile = "log.txt"
 const logdelim = " | "
@@ -20,6 +19,19 @@ function downloadinput(event,quest)
     url = "https://everybody-codes.b-cdn.net/assets/$event/$quest/input/$seed.json"
     r = HTTP.get(url;cookies=cookies)
     JSON3.read(String(r.body))
+end
+
+function downloaddescription(event,quest)
+    url = "https://everybody-codes.b-cdn.net/assets/$event/$quest/description.json"
+    r = HTTP.get(url;cookies=cookies)
+    JSON3.read(String(r.body))
+end
+
+submit(answer::AbstractString,part::Int) = submit(answer,getyearday()...,part)
+function submit(answer,year,day,part)
+    body = Dict("answer"=>answer)
+    r = HTTP.post(getsubmiturl(year,day,part);cookies=cookies,body=JSON3.write(body))
+    String(r.body)
 end
 
 #=
@@ -42,21 +54,60 @@ end=#
 
 function downloadinput(event,quest,part)
     inputs = downloadinput(event,quest)
+    decodepart(event,quest,part,inputs)
+end
+
+function decodepart(event,quest,part,inputs)
     keys = getkeys(event,quest)
     if !haskey(keys,"key$part")
         @warn "There is no key available for part $part yet"
     else
-
         key = collect(codeunits(keys["key$part"]))
         iv = collect(codeunits(keys["key$part"][1:16]))
         data = hex2bytes(inputs[part])
         keylength = length(key)*8
         dec = Decryptor("AES256", key)
         deciphertext = decrypt(dec, :CBC, iv, data)
-        String(trim_padding_PKCS5(deciphertext))
+        s = String(trim_padding_PKCS5(deciphertext))
+        println("Part $part:\n$s")
+        s
     end
 end
 
+function downloaddescription(event,quest,part)
+    inputs = downloaddescription(event,quest)
+    decodepart(event,quest,part,inputs)
+end
+
+saveexamples() = saveexamples(getyearday()...)
+function saveexamples(event,quest)
+    for part in 1:3
+        saveexamples(event,quest,part)
+    end
+end
+function saveexamples(event,quest,part)
+    firsttype = 'e'
+    path = getfilename(event,quest,part,firsttype)
+    if !isfile(path)
+        input = downloaddescription(event,quest,part)
+        if !isnothing(input)
+            em = eachmatch(r"<pre class=\"note\">(.+?)</pre>"s,input)
+            if !isempty(em)
+                i = 0
+                for m in em
+                    c = m.captures[1]
+                    if startswith(c,r"\r?\n") && endswith(c,r"\r?\n")
+                        c = strip(c)
+                        type = firsttype + i
+                        write(getfilename(event,quest,part,type),c)
+                        i += 1
+                    end
+                end
+            end
+        end
+    end
+end
+    
 function saveinput(event,quest,part)
     path = getfilename(event,quest,part)
     if !isfile(path)
@@ -120,6 +171,14 @@ function  parsegrid(linesin;type = Char,permute = true,delim="")
     end
     permute && return permutedims(grid,(2,1))
     grid
+end
+
+function gridtostring(grid)
+    s = ""
+    for r in eachrow(grid)
+        s *= join(r) * "\n"
+    end
+    s
 end
 
 loadhashgrid(filename::String) =loadhashgrid(loadlines(filename))
