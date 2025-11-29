@@ -15,14 +15,17 @@ const logdelim = " | "
 include("private.jl")
 const cookies = Dict("everybody-codes"=>sessioncookie)
 
+const CI = CartesianIndex
+const CIs = CartesianIndices
+
 function downloadinput(event,quest)
-    url = "https://everybody-codes.b-cdn.net/assets/$event/$quest/input/$seed.json"
+    url = "https://everybody.codes/assets/$event/$quest/input/$seed.json"
     r = HTTP.get(url;cookies=cookies)
     JSON3.read(String(r.body))
 end
 
 function downloaddescription(event,quest)
-    url = "https://everybody-codes.b-cdn.net/assets/$event/$quest/description.json"
+    url = "https://everybody.codes/assets/$event/$quest/description.json"
     r = HTTP.get(url;cookies=cookies)
     JSON3.read(String(r.body))
 end
@@ -146,6 +149,9 @@ function createfile(year,day)
         end
     end=#
 end
+
+
+# GENERIC HELPERS
 
 parselines(input) = split(strip(input),"\r\n")
 loadlines(;part=1,problem="p") = loadlines(getyearday()...,part,problem)
