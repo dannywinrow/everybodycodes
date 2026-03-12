@@ -5,7 +5,13 @@ using CircularArrays
 using Nettle
 
 #PATHS
-getfilename(year,day,part=1,type="p") = "$year/inputs/$day$type$(part).txt"
+function getfilename(year,day,part=1,type="p")
+    if year < 2000
+        day = year*100 + day
+        year = 2025
+    end
+    "$year/inputs/$day$type$(part).txt"
+end
 getjuliafilename(year,day) = "$year/src/$(day).jl"
 puzzleurl(year,day) = "https://everybody.codes/event/$year/quests/$day"
 getsubmiturl(year,day,part) = puzzleurl(year,day) * "/part/$part/answer"
@@ -18,7 +24,17 @@ const cookies = Dict("everybody-codes"=>sessioncookie)
 const CI = CartesianIndex
 const CIs = CartesianIndices
 
+function getme()
+    url = "https://api.everybody.codes/user/me"
+    r = HTTP.get(url;cookies=cookies)
+    JSON3.read(String(r.body))
+end
+function getseed()
+    j = getme()
+    j["seed"]
+end
 function downloadinput(event,quest)
+    seed = getseed()
     url = "https://everybody.codes/assets/$event/$quest/input/$seed.json"
     r = HTTP.get(url;cookies=cookies)
     JSON3.read(String(r.body))
@@ -83,6 +99,9 @@ function downloaddescription(event,quest,part)
 end
 
 saveexamples() = saveexamples(getyearday()...)
+event = 3
+quest = 2
+part = 1
 function saveexamples(event,quest)
     for part in 1:3
         saveexamples(event,quest,part)
@@ -99,12 +118,10 @@ function saveexamples(event,quest,part)
                 i = 0
                 for m in em
                     c = m.captures[1]
-                    if startswith(c,r"\r?\n") && endswith(c,r"\r?\n")
-                        c = strip(c)
-                        type = firsttype + i
-                        write(getfilename(event,quest,part,type),c)
-                        i += 1
-                    end
+                    c = strip(c)
+                    type = firsttype + i
+                    write(getfilename(event,quest,part,type),c)
+                    i += 1
                 end
             end
         end
@@ -129,7 +146,7 @@ function saveinputs(event,quest)
 end
 
 function getkeys(event,quest)
-    url = "https://everybody.codes/api/event/$event/quest/$quest"
+    url = "https://api.everybody.codes/event/$event/quest/$quest"
     r = HTTP.get(url;cookies=cookies)
     JSON3.read(String(r.body))
 end
@@ -155,7 +172,17 @@ end
 
 parselines(input) = split(strip(input),"\r\n")
 loadlines(;part=1,problem="p") = loadlines(getyearday()...,part,problem)
-loadlines(year,day,part=1,problem="p") = loadlines(getfilename(year,day,part,problem))
+function loadlines(year,day,part=1,problem="p")
+    fname = getfilename(year,day,part,problem)
+    if !isfile(fname)
+        if problem == "p"
+            saveinput(year,day,part)
+        else
+            saveexamples(year,day,part)
+        end
+    end
+    loadlines(fname)
+end
 function loadlines(filename::String)
     lines = readlines(filename)
     while lines[end] == ""
@@ -187,6 +214,32 @@ function gridtostring(grid)
     s
 end
 
+function countfocus(grid,focus='.')
+    rows,cols = size(grid)
+    lrows = prows = lcols = pcols = 0
+    while lrows < size(grid,1) && all(grid[lrows+1,:] .== focus)
+        lrows += 1
+    end
+    while prows < size(grid,1) && all(grid[size(grid,1)-prows,:] .== focus)
+        prows += 1
+    end
+    while lcols < size(grid,2) && all(grid[:,lcols+1] .== focus)
+        lcols += 1
+    end
+    while pcols < size(grid,2) && all(grid[:,size(grid,2)-pcols] .== focus)
+        pcols += 1
+    end
+    lrows,prows,lcols,pcols
+end
+function gridtostringfocus(grid,focus='.')
+    lrows,prows,lcols,pcols = countfocus(grid,focus)
+    s = ""
+    for r in eachrow(grid[lrows:size(grid,1)-prows+1,lcols-1:size(grid,2)-pcols+2])
+        s *= join(r) * "\n"
+    end
+    s
+end
+
 loadhashgrid(filename::String) =loadhashgrid(loadlines(filename))
 loadhashgrid(;part=1,problem="p",kwargs...) = parsehashgrid(loadlines(;part=part,problem=problem);kwargs...)
 function parsehashgrid(lines;truechar="#")
@@ -207,6 +260,12 @@ function getyearday()
     end
     year = match(r"\d\d\d\d",String(st[i].file)).match
     day = match(r"(\d+)[^\\]*.jl",String(st[i].file)).captures[1]
+    year = parse(Int,year)
+    day = parse(Int,day)
+    if day > 100
+        year = day ÷ 100
+        day = day % 100
+    end
     year,day
 end
 
