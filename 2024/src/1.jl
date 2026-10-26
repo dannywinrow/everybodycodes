@@ -1,4 +1,4 @@
-include("helper.jl")
+include("../../helper.jl")
 
 p1in = loadlines(part=1)[1]
 d = Dict('A'=>0,'B'=>1,'C'=>3)

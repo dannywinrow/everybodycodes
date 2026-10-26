@@ -1,4 +1,4 @@
-include("../helper.jl")
+include("../../helper.jl")
 
 
 function solve1(filename)
