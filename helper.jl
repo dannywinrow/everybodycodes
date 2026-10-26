@@ -2,16 +2,154 @@ using HTTP
 using Dates
 using JSON3
 using CircularArrays
+using Nettle
 
 #PATHS
-getfilename(year,day,part=1,type="p") = "$year/inputs/$day$type$(part).txt"
+function getfilename(year,day,part=1,type="p")
+    if year < 2000
+        day = year*100 + day
+        year = 2025
+    end
+    "$year/inputs/$day$type$(part).txt"
+end
 getjuliafilename(year,day) = "$year/src/$(day).jl"
 puzzleurl(year,day) = "https://everybody.codes/event/$year/quests/$day"
-getinputurl(year,day) = puzzleurl(year,day) * "/input"
-getsubmiturl(year,day) = puzzleurl(year,day) * "/answer"
+getsubmiturl(year,day,part) = puzzleurl(year,day) * "/part/$part/answer"
 const templatefile = "puzzletemplate.jl"
 const logfile = "log.txt"
 const logdelim = " | "
+include("private.jl")
+const cookies = Dict("everybody-codes"=>sessioncookie)
+
+const CI = CartesianIndex
+const CIs = CartesianIndices
+
+function getme()
+    url = "https://api.everybody.codes/user/me"
+    r = HTTP.get(url;cookies=cookies)
+    JSON3.read(String(r.body))
+end
+function getseed()
+    j = getme()
+    j["seed"]
+end
+function downloadinput(event,quest)
+    seed = getseed()
+    url = "https://everybody.codes/assets/$event/$quest/input/$seed.json"
+    r = HTTP.get(url;cookies=cookies)
+    JSON3.read(String(r.body))
+end
+
+function downloaddescription(event,quest)
+    url = "https://everybody.codes/assets/$event/$quest/description.json"
+    r = HTTP.get(url;cookies=cookies)
+    JSON3.read(String(r.body))
+end
+
+submit(answer::AbstractString,part::Int) = submit(answer,getyearday()...,part)
+function submit(answer,year,day,part)
+    body = Dict("answer"=>answer)
+    r = HTTP.post(getsubmiturl(year,day,part);cookies=cookies,body=JSON3.write(body))
+    String(r.body)
+end
+
+#=
+This is suitable for use with https://github.com/faf0/AES.jl but it is
+not the registered AES package.
+The registered AES.jl package does not support 256bit AES.
+I have used Nettle.jl instead as it is registered.
+
+function downloadinput(event,quest,part)
+    inputs = downloadinput(event,quest)
+    keys = getkeys(event,quest)
+    if !haskey(keys,"key$part")
+        @warn "There is no key available for part $part yet"
+    else
+        key = collect(codeunits(keys["key$part"]))
+        iv = collect(codeunits(keys["key$part"][1:16]))
+        String(AES.AESCBC(hex2bytes(inputs[part]),key,iv,false))
+    end
+end=#
+
+function downloadinput(event,quest,part)
+    inputs = downloadinput(event,quest)
+    decodepart(event,quest,part,inputs)
+end
+
+function decodepart(event,quest,part,inputs)
+    keys = getkeys(event,quest)
+    if !haskey(keys,"key$part")
+        @warn "There is no key available for part $part yet"
+    else
+        key = collect(codeunits(keys["key$part"]))
+        iv = collect(codeunits(keys["key$part"][1:16]))
+        data = hex2bytes(inputs[part])
+        keylength = length(key)*8
+        dec = Decryptor("AES256", key)
+        deciphertext = decrypt(dec, :CBC, iv, data)
+        s = String(trim_padding_PKCS5(deciphertext))
+        println("Part $part:\n$s")
+        s
+    end
+end
+
+function downloaddescription(event,quest,part)
+    inputs = downloaddescription(event,quest)
+    decodepart(event,quest,part,inputs)
+end
+
+saveexamples() = saveexamples(getyearday()...)
+event = 3
+quest = 2
+part = 1
+function saveexamples(event,quest)
+    for part in 1:3
+        saveexamples(event,quest,part)
+    end
+end
+function saveexamples(event,quest,part)
+    firsttype = 'e'
+    path = getfilename(event,quest,part,firsttype)
+    if !isfile(path)
+        input = downloaddescription(event,quest,part)
+        if !isnothing(input)
+            em = eachmatch(r"<pre class=\"note\">(.+?)</pre>"s,input)
+            if !isempty(em)
+                i = 0
+                for m in em
+                    c = m.captures[1]
+                    c = strip(c)
+                    type = firsttype + i
+                    write(getfilename(event,quest,part,type),c)
+                    i += 1
+                end
+            end
+        end
+    end
+end
+    
+function saveinput(event,quest,part)
+    path = getfilename(event,quest,part)
+    if !isfile(path)
+        input = downloadinput(event,quest,part)
+        if !isnothing(input)
+            write(path,input)
+        end
+    end
+end
+
+saveinputs() = saveinputs(getyearday()...)
+function saveinputs(event,quest)
+    for part in 1:3
+        saveinput(event,quest,part)
+    end
+end
+
+function getkeys(event,quest)
+    url = "https://api.everybody.codes/event/$event/quest/$quest"
+    r = HTTP.get(url;cookies=cookies)
+    JSON3.read(String(r.body))
+end
 
 # FILE HANDLING
 createfile() = createfile(year(now()),day(now()))
@@ -21,46 +159,93 @@ function createfile(year,day)
         mkpath(dirname(filepath))
         cp(templatefile,filepath)
     end
-    for pt in 1:3
+    #=for pt in 1:3
         filepath = getfilename(year,day,pt)
         if !isfile(filepath)
             write(filepath,"")
         end
-    end
+    end=#
 end
 
-    parselines(input) = split(strip(input),"\r\n")
-    loadlines(;part=1,problem="p") = loadlines(getyearday()...,part,problem)
-    loadlines(year,day,part=1,problem="p") = loadlines(getfilename(year,day,part,problem))
-    function loadlines(filename::String)
-        lines = readlines(filename)
-        while lines[end] == ""
-            lines = lines[1:end-1]
-        end
-        lines
-    end
 
-    loadgrid(filename::String;type=Char,delim="") = parsegrid(loadlines(filename);type=type,delim=delim)
-    loadgrid(;part=1,problem="p",type=Char,delim="") = parsegrid(loadlines(;part=part,problem=problem);type=type,delim=delim)
-    function  parsegrid(linesin;type = Char,permute = true,delim="")
-        maxline = maximum(length.(linesin))
-        lines = rpad.(linesin,maxline," ")
-        grid = hcat(split.(lines,delim)...)
-        if type != Char
-            grid = parse.(type,grid)
+# GENERIC HELPERS
+
+parselines(input) = split(strip(input),"\r\n")
+loadlines(;part=1,problem="p") = loadlines(getyearday()...,part,problem)
+function loadlines(year,day,part=1,problem="p")
+    fname = getfilename(year,day,part,problem)
+    if !isfile(fname)
+        if problem == "p"
+            saveinput(year,day,part)
         else
-            grid = getindex.(grid,1)
+            saveexamples(year,day,part)
         end
-        permute && return permutedims(grid,(2,1))
-        grid
     end
+    loadlines(fname)
+end
+function loadlines(filename::String)
+    lines = readlines(filename)
+    while lines[end] == ""
+        lines = lines[1:end-1]
+    end
+    lines
+end
 
-    loadhashgrid(filename::String) =loadhashgrid(loadlines(filename))
-    loadhashgrid(;part=1,problem="p",kwargs...) = parsehashgrid(loadlines(;part=part,problem=problem);kwargs...)
-    function parsehashgrid(lines;truechar="#")
-        @assert length(unique(length.(lines))) == 1
-        (x -> x ==truechar).(hcat(split.(lines,"")...))'
+loadgrid(filename::String;type=Char,delim="") = parsegrid(loadlines(filename);type=type,delim=delim)
+loadgrid(;part=1,problem="p",type=Char,delim="") = parsegrid(loadlines(;part=part,problem=problem);type=type,delim=delim)
+function  parsegrid(linesin;type = Char,permute = true,delim="")
+    maxline = maximum(length.(linesin))
+    lines = rpad.(linesin,maxline," ")
+    grid = hcat(split.(lines,delim)...)
+    if type != Char
+        grid = parse.(type,grid)
+    else
+        grid = getindex.(grid,1)
     end
+    permute && return permutedims(grid,(2,1))
+    grid
+end
+
+function gridtostring(grid)
+    s = ""
+    for r in eachrow(grid)
+        s *= join(r) * "\n"
+    end
+    s
+end
+
+function countfocus(grid,focus='.')
+    rows,cols = size(grid)
+    lrows = prows = lcols = pcols = 0
+    while lrows < size(grid,1) && all(grid[lrows+1,:] .== focus)
+        lrows += 1
+    end
+    while prows < size(grid,1) && all(grid[size(grid,1)-prows,:] .== focus)
+        prows += 1
+    end
+    while lcols < size(grid,2) && all(grid[:,lcols+1] .== focus)
+        lcols += 1
+    end
+    while pcols < size(grid,2) && all(grid[:,size(grid,2)-pcols] .== focus)
+        pcols += 1
+    end
+    lrows,prows,lcols,pcols
+end
+function gridtostringfocus(grid,focus='.')
+    lrows,prows,lcols,pcols = countfocus(grid,focus)
+    s = ""
+    for r in eachrow(grid[lrows:size(grid,1)-prows+1,lcols-1:size(grid,2)-pcols+2])
+        s *= join(r) * "\n"
+    end
+    s
+end
+
+loadhashgrid(filename::String) =loadhashgrid(loadlines(filename))
+loadhashgrid(;part=1,problem="p",kwargs...) = parsehashgrid(loadlines(;part=part,problem=problem);kwargs...)
+function parsehashgrid(lines;truechar="#")
+    @assert length(unique(length.(lines))) == 1
+    (x -> x ==truechar).(hcat(split.(lines,"")...))'
+end
 
 function splitvect(a::Vector,delim)
     inds = vcat(0,findall(==(delim),a),length(a)+1)
@@ -75,6 +260,12 @@ function getyearday()
     end
     year = match(r"\d\d\d\d",String(st[i].file)).match
     day = match(r"(\d+)[^\\]*.jl",String(st[i].file)).captures[1]
+    year = parse(Int,year)
+    day = parse(Int,day)
+    if day > 100
+        year = day ÷ 100
+        day = day % 100
+    end
     year,day
 end
 

@@ -1,7 +1,18 @@
 include("../../helper.jl")
 
-function solve1(part=1,problem="p")
+saveinputs()
+saveexamples()
+
+function solve(part=1,problem="p")
     lines = loadlines(part=part,problem=problem)
 end
 
-pt1 = solve1(1)
+pt1 = solve()
+
+
+
+pt2 = solve(2)
+
+
+
+pt3 = solve(3)
