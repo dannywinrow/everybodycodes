@@ -1,6 +1,6 @@
 using HTTP
 using Dates
-using JSON3
+using JSON
 using CircularArrays
 using Nettle
 
@@ -18,6 +18,7 @@ getsubmiturl(year,day,part) = puzzleurl(year,day) * "/part/$part/answer"
 const templatefile = "puzzletemplate.jl"
 const logfile = "log.txt"
 const logdelim = " | "
+
 include("private.jl")
 const cookies = Dict("everybody-codes"=>sessioncookie)
 
@@ -27,7 +28,7 @@ const CIs = CartesianIndices
 function getme()
     url = "https://api.everybody.codes/user/me"
     r = HTTP.get(url;cookies=cookies)
-    JSON3.read(String(r.body))
+    JSON.parse(String(r.body))
 end
 function getseed()
     j = getme()
@@ -37,19 +38,19 @@ function downloadinput(event,quest)
     seed = getseed()
     url = "https://everybody.codes/assets/$event/$quest/input/$seed.json"
     r = HTTP.get(url;cookies=cookies)
-    JSON3.read(String(r.body))
+    JSON.parse(String(r.body))
 end
 
 function downloaddescription(event,quest)
     url = "https://everybody.codes/assets/$event/$quest/description.json"
     r = HTTP.get(url;cookies=cookies)
-    JSON3.read(String(r.body))
+    JSON.parse(String(r.body))
 end
 
 submit(answer::AbstractString,part::Int) = submit(answer,getyearday()...,part)
 function submit(answer,year,day,part)
     body = Dict("answer"=>answer)
-    r = HTTP.post(getsubmiturl(year,day,part);cookies=cookies,body=JSON3.write(body))
+    r = HTTP.post(getsubmiturl(year,day,part);cookies=cookies,body=JSON.json(body))
     String(r.body)
 end
 
@@ -83,7 +84,7 @@ function decodepart(event,quest,part,inputs)
     else
         key = collect(codeunits(keys["key$part"]))
         iv = collect(codeunits(keys["key$part"][1:16]))
-        data = hex2bytes(inputs[part])
+        data = hex2bytes(inputs[string(part)])
         keylength = length(key)*8
         dec = Decryptor("AES256", key)
         deciphertext = decrypt(dec, :CBC, iv, data)
@@ -99,14 +100,13 @@ function downloaddescription(event,quest,part)
 end
 
 saveexamples() = saveexamples(getyearday()...)
-event = 3
-quest = 2
-part = 1
+
 function saveexamples(event,quest)
     for part in 1:3
         saveexamples(event,quest,part)
     end
 end
+
 function saveexamples(event,quest,part)
     firsttype = 'e'
     path = getfilename(event,quest,part,firsttype)
@@ -132,6 +132,7 @@ function saveinput(event,quest,part)
     path = getfilename(event,quest,part)
     if !isfile(path)
         input = downloadinput(event,quest,part)
+        mkpath(dirname(path))
         if !isnothing(input)
             write(path,input)
         end
@@ -148,7 +149,7 @@ end
 function getkeys(event,quest)
     url = "https://api.everybody.codes/event/$event/quest/$quest"
     r = HTTP.get(url;cookies=cookies)
-    JSON3.read(String(r.body))
+    JSON.parse(String(r.body))
 end
 
 # FILE HANDLING
