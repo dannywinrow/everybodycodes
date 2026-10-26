@@ -3,6 +3,3 @@ outputs
 other
 Manifest.toml
 private.jl
-
-personal.jl
-Manifest.toml
