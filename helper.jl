@@ -192,6 +192,12 @@ function loadlines(filename::String)
     lines
 end
 
+function getnums(line)
+    em = collect(eachmatch(r"(\d+)",line))
+    [parse(Int,x.match) for x in em]
+end
+
+
 loadgrid(filename::String;type=Char,delim="") = parsegrid(loadlines(filename);type=type,delim=delim)
 loadgrid(;part=1,problem="p",type=Char,delim="") = parsegrid(loadlines(;part=part,problem=problem);type=type,delim=delim)
 function  parsegrid(linesin;type = Char,permute = true,delim="")
