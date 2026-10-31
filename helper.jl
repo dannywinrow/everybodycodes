@@ -289,12 +289,13 @@ directions = CircularArray([R,D,L,U])
 arrows = CircularArray(['>','v','<','^'])
 
 # CARTESIAN INDICES NEIGHBOURS
-neighbours(ci) = Ref(ci) .+ cartesiancube(length(ci))
+neighbours(ci;depth=1) = Ref(ci) .+ cartesiancube(length(ci);depth=depth)
 adjacents(ci) = Ref(ci) .+ directions
 
-function cartesiancube(dims,i=false)
-    ret = CartesianIndices(Tuple(fill(-1:1,dims)))
+function cartesiancube(dims, i=false; depth=1, corners=true)
+    ret = CartesianIndices(Tuple(fill(-depth:depth,dims)))
     i || (ret = filter(x->x!=CartesianIndex(Tuple(fill(0,dims))),ret))
+    corners || (ret = filter(x->sum(abs.(Tuple(x))) != depth * 2,ret))
     ret
 end
 
